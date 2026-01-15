@@ -10,6 +10,9 @@ import FileList from "../components/FileList";
 import ParameterList from "../components/ParameterList";
 import ChartStack from "../components/ChartStack";
 import { readLineStream, downsampleLTTB } from "../utils/streamParser";
+import Header from "../components/Header";
+import FileColumn from "../components/FileColumn";
+import ParameterColumn from "../components/ParameterColumns";
 
 export default function PlotPage({ uploadedFiles, setUploadedFiles }) {
   const navigate = useNavigate();
@@ -268,89 +271,30 @@ export default function PlotPage({ uploadedFiles, setUploadedFiles }) {
 
   return (
     <div className="min-h-screen">
-      {/* Updated header with rose accent & center alignment */}
-      <header className="relative bg-gradient-to-r from-black via-rose-950 to-black border-b border-rose-900">
-        <div className="max-w-7xl mx-auto px-6 py-6 flex items-center justify-center gap-4">
-          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-rose-600/20 border border-rose-500/40 shadow-[0_0_20px_rgba(244,63,94,0.18)]">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              className="w-7 h-7 text-rose-400"
-            >
-              <path d="M3 3v18h18" />
-              <path d="M7 14l4-4 3 3 5-6" />
-            </svg>
-          </div>
-
-          <div className="text-center">
-            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-rose-400 via-rose-300 to-rose-500">
-              Time Series Plotting Tool
-            </h1>
-            <p className="text-sm text-rose-200/70 mt-1">
-              Upload → Select files & parameters → Visualize
-            </p>
-          </div>
-        </div>
-      </header>
-
+      <Header />
       {/* Top area: Files + Parameters side-by-side (resizable height) */}
       <div style={{ height: `${topHeight}vh` }} className="p-4">
         <div className="grid grid-cols-2 gap-4 h-full">
           {/* Files column */}
-          <div className="bg-slate-900 rounded p-4 h-full overflow-auto">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-white font-semibold">Select Files</h3>
-              <div className="text-xs text-slate-400">
-                Click a file to activate
-              </div>
-            </div>
-
-            <div className="mb-3">
-              <input
-                className="w-full px-2 py-2 rounded bg-slate-800 text-slate-300"
-                placeholder="Search files (use * as wildcard)"
-                value={fileSearch}
-                onChange={(e) => setFileSearch(e.target.value)}
-              />
-            </div>
-
-            <FileList
-              uploadedFiles={uploadedFiles}
-              filteredKeys={filteredFileKeys}
-              activeFileKeys={activeFileKeys}
-              toggleFile={toggleFile}
-            />
-          </div>
+          <FileColumn
+            uploadedFiles={uploadedFiles}
+            filteredFileKeys={filteredFileKeys}
+            activeFileKeys={activeFileKeys}
+            toggleFile={toggleFile}
+            fileSearch={fileSearch}
+            setFileSearch={setFileSearch}
+          />
 
           {/* Parameters column */}
-          <div className="bg-slate-900 rounded p-4 h-full overflow-auto">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-white font-semibold">Select Parameters</h3>
-              <div className="text-xs text-slate-400">
-                Click to add parameter
-              </div>
-            </div>
-
-            <div className="mb-3">
-              <input
-                className="w-full px-2 py-2 rounded bg-slate-800 text-slate-300"
-                placeholder="Search params (use * as wildcard)"
-                value={paramSearch}
-                onChange={(e) => setParamSearch(e.target.value)}
-              />
-            </div>
-
-            <ParameterList
-              params={availableColumns}
-              unitsMap={columnUnits}
-              filteredParams={filteredAvailableColumns}
-              selectedParams={selectedParams}
-              toggleParam={toggleParam}
-            />
-          </div>
+          <ParameterColumn
+            availableColumns={availableColumns}
+            columnUnits={columnUnits}
+            filteredAvailableColumns={filteredAvailableColumns}
+            selectedParams={selectedParams}
+            toggleParam={toggleParam}
+            paramSearch={paramSearch}
+            setParamSearch={setParamSearch}
+          />
         </div>
       </div>
 
