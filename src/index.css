@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+/* Optional theme tokens */
+@theme {
+  --color-primary: oklch(0.65 0.32 250);
+}
+
+/* subtle scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.22); border-radius: 8px; }
