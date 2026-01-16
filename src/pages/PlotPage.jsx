@@ -6,18 +6,18 @@ import React, {
   useRef,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import FileList from "../components/FileList";
-import ParameterList from "../components/ParameterList";
 import ChartStack from "../components/ChartStack";
 import { readLineStream, downsampleLTTB } from "../utils/streamParser";
 import Header from "../components/Header";
 import FileColumn from "../components/FileColumn";
 import ParameterColumn from "../components/ParameterColumns";
+import UploadSmall from "../components/UploadSmall";
+import { getFileColor } from "../utils/colorMap";
 
 export default function PlotPage({ uploadedFiles, setUploadedFiles }) {
   const navigate = useNavigate();
 
-  // original logic states
+  // state
   const [fileDataMap, setFileDataMap] = useState({});
   const [availableColumns, setAvailableColumns] = useState([]);
   const [columnUnits, setColumnUnits] = useState({});
@@ -27,13 +27,18 @@ export default function PlotPage({ uploadedFiles, setUploadedFiles }) {
   const [fileSearch, setFileSearch] = useState("");
   const [paramSearch, setParamSearch] = useState("");
 
+  // left panel vertical splitter state (percent)
+  const [leftTopPercent, setLeftTopPercent] = useState(60); // files:params split
+
   useEffect(() => {
     if (!uploadedFiles || Object.keys(uploadedFiles).length === 0) {
-      navigate("/");
+      // allow them to still stay but navigate them back if you wish:
+      // navigate("/");
+      // I'll allow staying so upload small on page can add files
     }
   }, [uploadedFiles, navigate]);
 
-  // wildcard converter kept
+  // wildcard -> regexp helper (kept)
   const wildcardToRegExp = useCallback((pattern) => {
     const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
     let regexString;
@@ -63,7 +68,7 @@ export default function PlotPage({ uploadedFiles, setUploadedFiles }) {
     }
   }, [availableColumns, paramSearch, wildcardToRegExp]);
 
-  // your streaming loadFile (unchanged)
+  // loadFile (kept, unchanged except we reference setUploadedFiles outside)
   const loadFile = useCallback(async (file, fileKey) => {
     const DOWNSAMPLE_THRESHOLD = 2000;
     let headers = [];
@@ -171,7 +176,7 @@ export default function PlotPage({ uploadedFiles, setUploadedFiles }) {
     }
   }, []);
 
-  // toggle file (keeps your behavior)
+  // toggle file: load versions if activating
   const toggleFile = async (fileKey) => {
     if (activeFileKeys.includes(fileKey)) {
       setActiveFileKeys((p) => p.filter((k) => k !== fileKey));
@@ -184,7 +189,6 @@ export default function PlotPage({ uploadedFiles, setUploadedFiles }) {
     }
   };
 
-  // toggle param (keeps your behavior)
   const toggleParam = (p) => {
     setSelectedParams((prev) =>
       prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]
@@ -214,7 +218,7 @@ export default function PlotPage({ uploadedFiles, setUploadedFiles }) {
           const name = `${fileKey}${
             versions.length > 1 ? ` (${idx + 1})` : ""
           }`;
-          const color = `hsl(${Math.abs(hashCode(name)) % 360} 70% 45%)`;
+          const color = getFileColor(fileKey);
           const id = `${fileKey}__${idx}__${param}`;
           traces.push({ id, name, color, data, visible: true });
         });
@@ -241,22 +245,22 @@ export default function PlotPage({ uploadedFiles, setUploadedFiles }) {
     setVisibleMap((p) => ({ ...p, [id]: visible }));
   };
 
-  // ======== Resizable top area logic (dragging the horizontal splitter) =========
-  const [topHeight, setTopHeight] = useState(45); // percent
-  const draggingRef = useRef(false);
-
+  // UI: left vertical splitter dragging for files/params
+  const leftDraggingRef = useRef(false);
   useEffect(() => {
     const onMove = (e) => {
-      if (!draggingRef.current) return;
+      if (!leftDraggingRef.current) return;
+      const container = document.getElementById("left-panel");
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
       const y = e.clientY || (e.touches && e.touches[0].clientY);
-      const total = window.innerHeight;
-      if (!total) return;
-      const percent = Math.max(20, Math.min(75, (y / total) * 100));
-      setTopHeight(percent);
+      const percent = Math.max(
+        20,
+        Math.min(80, ((y - rect.top) / rect.height) * 100)
+      );
+      setLeftTopPercent(percent);
     };
-    const onUp = () => {
-      draggingRef.current = false;
-    };
+    const onUp = () => (leftDraggingRef.current = false);
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
     window.addEventListener("touchmove", onMove);
@@ -269,62 +273,105 @@ export default function PlotPage({ uploadedFiles, setUploadedFiles }) {
     };
   }, []);
 
+  // called from UploadSmall to merge new files
+  const mergeFiles = (files) => {
+    const outs = [...files].filter((f) =>
+      f.name.toLowerCase().endsWith(".out")
+    );
+    if (outs.length === 0) return;
+
+    setUploadedFiles((prev) => {
+      const copy = { ...prev };
+      outs.forEach((f) => {
+        if (!copy[f.name]) copy[f.name] = [];
+        const key = `${f.name}_${f.lastModified}`;
+        if (
+          !copy[f.name].some((ef) => `${ef.name}_${ef.lastModified}` === key)
+        ) {
+          copy[f.name].push(f);
+        }
+      });
+      return copy;
+    });
+    // optionally auto-load newly selected file(s) — keep passive for now
+  };
+
+  // expose "apply range to all" from ChartStack -> we will forward this to ChartStack via prop
+  const chartRangeRef = useRef(null); // not used here, ChartStack manages internal refs
+
   return (
     <div className="min-h-screen">
       <Header />
-      {/* Top area: Files + Parameters side-by-side (resizable height) */}
-      <div style={{ height: `${topHeight}vh` }} className="p-4">
-        <div className="grid grid-cols-2 gap-4 h-full">
-          {/* Files column */}
-          <FileColumn
-            uploadedFiles={uploadedFiles}
-            filteredFileKeys={filteredFileKeys}
-            activeFileKeys={activeFileKeys}
-            toggleFile={toggleFile}
-            fileSearch={fileSearch}
-            setFileSearch={setFileSearch}
+
+      <div className="p-4 flex gap-4" style={{ height: "calc(100vh - 64px)" }}>
+        {/* LEFT: narrow side (files + params stacked vertically with draggable horizontal splitter) */}
+        <div
+          id="left-panel"
+          className="w-80 bg-slate-900 rounded-md p-2 flex flex-col"
+          style={{ minWidth: 260 }}
+        >
+          {/* small upload controls */}
+          <div className="mb-2">
+            <UploadSmall mergeFiles={mergeFiles} />
+          </div>
+
+          {/* Files area (resizable height) */}
+          <div
+            className="overflow-auto bg-slate-800 rounded p-2"
+            style={{ height: `${leftTopPercent}%` }}
+          >
+            <FileColumn
+              uploadedFiles={uploadedFiles}
+              filteredFileKeys={filteredFileKeys}
+              activeFileKeys={activeFileKeys}
+              toggleFile={toggleFile}
+              fileSearch={fileSearch}
+              setFileSearch={setFileSearch}
+            />
+          </div>
+
+          {/* draggable splitter */}
+          <div
+            onMouseDown={() => (leftDraggingRef.current = true)}
+            onTouchStart={() => (leftDraggingRef.current = true)}
+            className="h-2 my-2 bg-slate-700 cursor-row-resize rounded"
+            title="Drag to resize Files / Parameters"
           />
 
-          {/* Parameters column */}
-          <ParameterColumn
-            availableColumns={availableColumns}
-            columnUnits={columnUnits}
-            filteredAvailableColumns={filteredAvailableColumns}
-            selectedParams={selectedParams}
-            toggleParam={toggleParam}
-            paramSearch={paramSearch}
-            setParamSearch={setParamSearch}
-          />
+          {/* Parameters area */}
+          <div
+            className="overflow-auto bg-slate-800 rounded p-2"
+            style={{ height: `${100 - leftTopPercent - 4}%` }}
+          >
+            <ParameterColumn
+              availableColumns={availableColumns}
+              columnUnits={columnUnits}
+              filteredAvailableColumns={filteredAvailableColumns}
+              selectedParams={selectedParams}
+              toggleParam={toggleParam}
+              paramSearch={paramSearch}
+              setParamSearch={setParamSearch}
+            />
+          </div>
         </div>
-      </div>
 
-      {/* Horizontal splitter */}
-      <div
-        onMouseDown={() => (draggingRef.current = true)}
-        onTouchStart={() => (draggingRef.current = true)}
-        className="h-2 bg-slate-800 cursor-row-resize"
-        title="Drag to resize panels"
-      />
-
-      {/* Bottom area: charts */}
-      <div
-        className="p-4 h-[calc(100vh- (var(--top, 50vh)))]"
-        style={{ height: `calc(${100 - topHeight}vh - 8px)` }}
-      >
-        <div className="bg-transparent rounded p-0 h-full overflow-auto">
+        {/* RIGHT: charts area */}
+        <div className="flex-1 bg-transparent rounded p-0 h-full overflow-auto">
           {selectedParams.length === 0 ? (
-            <div className="bg-white text-slate-900 rounded p-6">
+            <div className="bg-white text-slate-900 rounded p-6 m-6">
               <h2 className="text-lg font-semibold">Start Plotting</h2>
               <ol className="text-sm text-slate-600 mt-2">
-                <li>1. Upload files on Upload page.</li>
+                <li>1. Upload files on this page (or Upload page).</li>
                 <li>2. Select files on the left.</li>
-                <li>3. Pick parameters in the middle.</li>
+                <li>3. Pick parameters below the files panel.</li>
               </ol>
             </div>
           ) : (
             <ChartStack
               stacks={visibleStacks}
               onLegendToggle={onLegendToggle}
+              // allow ChartStack to access uploadedFiles if needed
+              uploadedFiles={uploadedFiles}
             />
           )}
         </div>
